@@ -2,47 +2,47 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>EVOLVE: Shadow Run</title>
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   html, body {
-    width: 100%; height: 100%;
-    background: #050508;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 100vw;
+    height: 100vh;
     overflow: hidden;
+    background: #050508;
     font-family: 'Courier New', monospace;
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
   }
 
-  /* Outer wrapper — sized & scaled by JS to fit viewport at 16:10 */
+  /* Outer wrapper: fills the entire screen; centres the game container */
   #gameWrapper {
+    position: fixed;
+    inset: 0;
+    background: #050508;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Inner container: always 800×500 logical pixels, scaled by JS */
+  #gameContainer {
     position: relative;
     width: 800px;
     height: 500px;
     flex-shrink: 0;
-    transform-origin: center center;
-  }
-
-  /* Inner container holds canvas + all HTML overlays */
-  #gameContainer {
-    position: absolute;
-    inset: 0;
     overflow: hidden;
-    border: 1px solid #1a1a2e;
-    box-shadow: 0 0 60px rgba(0,200,255,0.07);
+    transform-origin: center center;
     background: #08080f;
   }
 
   canvas {
     display: block;
-    width: 100%;
-    height: 100%;
+    width: 800px;
+    height: 500px;
   }
 
   /* ── UI Screens ── */
@@ -258,12 +258,18 @@
 // ════════════════════════════════════════════════════════════════════════
 
 // ── Responsive scaling ────────────────────────────────────────────────
+// The game always runs in a fixed 800×500 coordinate space.
+// #gameContainer stays 800×500 in CSS; we CSS-transform it to fit the
+// viewport, centred by the flexbox on #gameWrapper.
 const GAME_W = 800, GAME_H = 500;
-const wrapper = document.getElementById('gameWrapper');
+const container = document.getElementById('gameContainer');
 
 function resizeGame() {
-  const scale = Math.min(window.innerWidth / GAME_W, window.innerHeight / GAME_H);
-  wrapper.style.transform = `scale(${scale})`;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  // Largest uniform scale that fits both dimensions (letterbox if needed)
+  const scale = Math.min(vw / GAME_W, vh / GAME_H);
+  container.style.transform = `scale(${scale})`;
 }
 window.addEventListener('resize', resizeGame);
 window.addEventListener('orientationchange', () => setTimeout(resizeGame, 250));
