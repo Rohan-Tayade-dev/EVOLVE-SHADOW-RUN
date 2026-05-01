@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<!-- ═══════════════════════════════════════════════════════════
+     VIEWPORT — must be the very first meta after charset.
+     viewport-fit=cover lets content extend into notch/safe areas.
+     interactive-widget=resizes-content stops Android Chrome from
+     shrinking the viewport when the soft keyboard appears.
+═══════════════════════════════════════════════════════════ -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0,
+      minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,
+      viewport-fit=cover, interactive-widget=resizes-content">
+
+<!-- ═══════════════════════════════════════════════════════════
+     PWA — links the Web App Manifest.
+     The manifest declares display:"fullscreen" which removes ALL
+     browser chrome when the app is launched from the home screen.
+═══════════════════════════════════════════════════════════ -->
+<link rel="manifest" href="manifest.json">
+
+<!-- ═══════════════════════════════════════════════════════════
+     ANDROID — chrome picks up theme colour and PWA capability
+     from the manifest, but these meta tags are belt-and-braces.
+═══════════════════════════════════════════════════════════ -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#050508">
+
+<!-- ═══════════════════════════════════════════════════════════
+     iOS SAFARI — Safari ignores the W3C manifest entirely.
+     These proprietary meta tags are the ONLY way to get
+     fullscreen (standalone) behaviour on iPhone/iPad.
+     "black-translucent" status bar extends content under the
+     notch so no white bar appears at the top.
+═══════════════════════════════════════════════════════════ -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EVOLVE">
+
+<!-- Apple touch icons (shown on the home screen) -->
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<!-- ═══════════════════════════════════════════════════════════
+     GENERAL
+═══════════════════════════════════════════════════════════ -->
+<meta name="description" content="EVOLVE: Shadow Run — adaptive mobile platformer">
+<meta name="format-detection" content="telephone=no">
+<title>EVOLVE: Shadow Run</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html {
+    width: 100%;
+    height: 100%;
+    height: -webkit-fill-available;
+    height: 100dvh;
+    overflow: hidden;
+    background: #050508;
+  }
+
+  body {
+    width: 100%;
+    /* Fill the true visual viewport on every browser/OS */
+    height: 100%;
+    height: -webkit-fill-available;
+    height: 100dvh;
+    overflow: hidden;
+    background: #050508;
+    font-family: 'Courier New', monospace;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: auto;
+    /* position:fixed pins the body so iOS rubber-band scrolling
+       cannot reveal the address bar under the game */
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    /* Honour notch / home-indicator safe areas */
+    padding-top:    env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left:   env(safe-area-inset-left);
+    padding-right:  env(safe-area-inset-right);
+  }
+
+  #gameWrapper {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    width: 100%;
+    height: 100%;
+    background: #050508;
+    overflow: hidden;
+  }
+
+  /* Inner container: JS sets its position and matches canvas display size */
+  #gameContainer {
+    position: absolute;
+    background: #08080f;
+    /* Size comes from the canvas inside; no transform needed */
+  }
+
+  canvas {
+    display: block;
+    /* width and height set by JS resizeGame() to scaled px values */
+  }
+
+  /* ── UI Screens ── */
+  .screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6,6,14,0.96);
+    color: #e0e0ff;
+    z-index: 10;
+    gap: 15px;
+  }
+  .screen.hidden { display: none; }
+  .screen h1 {
+    font-size: 40px;
+    letter-spacing: 8px;
+    color: #00d4ff;
+    text-shadow: 0 0 24px rgba(0,212,255,0.35);
+    font-weight: 400;
+  }
+  .screen h2 {
+    font-size: 22px;
+    letter-spacing: 5px;
+    color: #ff4466;
+    font-weight: 400;
+  }
+  .screen p {
+    font-size: 13px;
+    color: #8888aa;
+    letter-spacing: 1px;
+    text-align: center;
+    line-height: 1.9;
+    max-width: 460px;
+    padding: 0 16px;
+  }
+  .screen .subtitle {
+    font-size: 11px;
+    color: #00d4ff;
+    letter-spacing: 3px;
+    opacity: 0.65;
+  }
+
+  .btn {
+    padding: 11px 34px;
+    background: transparent;
+    border: 1px solid #00d4ff;
+    color: #00d4ff;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:hover  { background: rgba(0,212,255,0.1); box-shadow: 0 0 18px rgba(0,212,255,0.18); }
+  .btn:active { transform: scale(0.97); }
+
+  .stat-row {
+    display: flex;
+    gap: 36px;
+    font-size: 13px;
+    color: #556;
+    letter-spacing: 1px;
+  }
+  .stat-row span { color: #00d4ff; }
+
+  /* ── HUD ── */
+  #hud {
+    position: absolute;
+    top: 10px;
+    left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 16px;
+    pointer-events: none;
+    z-index: 5;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: #8888aa;
+  }
+  #hud .hud-val        { color: #00d4ff; }
+  #hud .hud-val.danger { color: #ff4466; }
+
+  /* ── Level transition overlay (JS controls opacity directly) ── */
+  #levelOverlay {
+    position: absolute;
+    inset: 0;
+    background: #06060e;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 8;
+  }
+
+  /* ── Level announcement banner ── */
+  #levelBanner {
+    position: absolute;
+    top: 46%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #00d4ff;
+    font-size: 28px;
+    letter-spacing: 7px;
+    font-weight: 400;
+    pointer-events: none;
+    z-index: 9;
+    opacity: 0;
+    text-shadow: 0 0 22px rgba(0,212,255,0.55);
+    white-space: nowrap;
+    transition: opacity 0.25s;
+  }
+
+  /* ── Touch controls ── */
+  #touchControls {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    display: none;
+    padding: 8px max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    justify-content: space-between;
+    align-items: flex-end;
+    z-index: 100;
+    pointer-events: none;
+    /* Always in the fixed viewport, never inside the rotated canvas */
+  }
+  .touch-group { display: flex; gap: 10px; pointer-events: all; }
+  .touch-btn {
+    width: 70px; height: 70px;
+    background: rgba(0,212,255,0.10);
+    border: 1.5px solid rgba(0,212,255,0.35);
+    border-radius: 14px;
+    color: #00d4ff;
+    font-size: 28px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .touch-btn.pressed { background: rgba(0,212,255,0.25); border-color: rgba(0,212,255,0.7); }
+  #tDash { font-size: 13px; letter-spacing: 1px; }
+
+  /* ── Portrait / Rotate Overlay ── */
+  #rotateOverlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    width: 100dvw; height: 100dvh;
+    background: #06060e;
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    color: #e0e0ff;
+    /* Hidden state: visibility avoids display:none race conditions on mobile */
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+  }
+  #rotateOverlay.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: all;
+  }
+  #rotateOverlay .rotate-icon {
+    font-size: 64px;
+    animation: rotateAnim 2s ease-in-out infinite;
+  }
+  @keyframes rotateAnim {
+    0%   { transform: rotate(0deg); opacity: 0.6; }
+    40%  { transform: rotate(-90deg); opacity: 1; }
+    60%  { transform: rotate(-90deg); opacity: 1; }
+    100% { transform: rotate(-90deg) scale(1.05); opacity: 0.6; }
+  }
+  #rotateOverlay h2 {
+    font-size: 18px;
+    letter-spacing: 4px;
+    color: #00d4ff;
+    text-align: center;
+    padding: 0 24px;
+    line-height: 1.6;
+    font-weight: 400;
+    text-shadow: 0 0 20px rgba(0,212,255,0.4);
+  }
+  #rotateOverlay p {
+    font-size: 11px;
+    color: #556;
+    letter-spacing: 2px;
+  }
+
+  /* ── Notification System ── */
+  #notifContainer {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 9000;
+    pointer-events: none;
+  }
+  .notif {
+    background: rgba(6,6,20,0.92);
+    border: 1px solid rgba(0,212,255,0.5);
+    color: #00d4ff;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    padding: 10px 20px;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 0 24px rgba(0,212,255,0.18), inset 0 0 12px rgba(0,212,255,0.05);
+    animation: notifIn 0.3s ease forwards;
+    max-width: 90vw;
+    text-align: center;
+    backdrop-filter: blur(8px);
+  }
+  .notif.notif-unlock {
+    border-color: rgba(0,255,180,0.6);
+    color: #00ffb4;
+    box-shadow: 0 0 28px rgba(0,255,180,0.22), inset 0 0 12px rgba(0,255,180,0.06);
+  }
+  .notif.notif-out {
+    animation: notifOut 0.4s ease forwards;
+  }
+  @keyframes notifIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0)     scale(1);    }
+  }
+  @keyframes notifOut {
+    from { opacity: 1; transform: translateY(0)    scale(1);    }
+    to   { opacity: 0; transform: translateY(-8px) scale(0.95); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Rotate to landscape overlay -->
+<div id="rotateOverlay">
+  <div class="rotate-icon">📱</div>
+  <h2>PLEASE ROTATE YOUR DEVICE<br>TO LANDSCAPE TO PLAY</h2>
+  <p>// LANDSCAPE MODE REQUIRED //</p>
+</div>
+
+<!-- Notification container -->
+<div id="notifContainer"></div>
+
+<div id="gameWrapper">
+  <div id="gameContainer">
+
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+
+    <div id="hud">
+      <div>LVL <span id="hudLevel" class="hud-val">1</span></div>
+      <div>SCORE <span id="hudScore" class="hud-val">0</span></div>
+      <div>BEST <span id="hudBest" class="hud-val">0</span></div>
+      <div>HP <span id="hudHP" class="hud-val">■■■</span></div>
+    </div>
+
+    <div id="levelOverlay"></div>
+    <div id="levelBanner"></div>
+
+    <!-- Start Screen -->
+    <div id="startScreen" class="screen">
+      <div class="subtitle">// ADAPTIVE PLATFORMER //</div>
+      <h1>EVOLVE</h1>
+      <p class="subtitle">SHADOW RUN</p>
+      <p>Your past runs return as ghosts.<br>Survive them. Outlast yourself.</p>
+      <div class="stat-row">
+        <div>BEST <span id="startBest">0</span></div>
+        <div>RUNS <span id="startRuns">0</span></div>
+      </div>
+      <button class="btn" id="startBtn">[ PLAY ]</button>
+      <p style="font-size:10px;margin-top:2px;opacity:0.45;">
+        WASD / ARROWS &nbsp;·&nbsp; SPACE jump &nbsp;·&nbsp; SHIFT dash (lv4+) &nbsp;·&nbsp; ENTER to start
+      </p>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen" class="screen hidden">
+      <h2>YOU DIED</h2>
+      <div class="stat-row">
+        <div>LEVEL <span id="goLevel">1</span></div>
+        <div>SCORE <span id="goScore">0</span></div>
+        <div>BEST  <span id="goBest">0</span></div>
+      </div>
+      <p id="goMsg" style="font-size:11px;color:#445;margin-top:-4px;"></p>
+      <button class="btn" id="restartBtn">[ TRY AGAIN ]</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Touch Controls outside game container so they're unaffected by canvas rotation -->
+<div id="touchControls">
+  <div class="touch-group">
+    <div class="touch-btn" id="tLeft">&#8592;</div>
+    <div class="touch-btn" id="tRight">&#8594;</div>
+  </div>
+  <div class="touch-group">
+    <div class="touch-btn" id="tDash" style="display:none;">DASH</div>
+    <div class="touch-btn" id="tJump">&#8593;</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ════════════════════════════════════════════════════════════════════════
+//  EVOLVE: SHADOW RUN  — v2 (fixed & improved)
+//  Key fixes:
+//    • Goal check uses world-space p.x directly (was subtracting camX — wrong)
+//    • startLevel() fully reinitialises ALL state — no leaks between levels
+//    • Level transition: fade-out → swap → fade-in using per-frame JS alpha
+//    • Responsive: CSS transform scales 800×500 canvas to fit any viewport
+//    • Touch controls: proper multi-touch via touchstart/touchend per button
+// ════════════════════════════════════════════════════════════════════════
+
+// ── Responsive scaling ────────────────────────────────────────────────
+// The game draws into a fixed 800×500 canvas (never changes — all game
+// coordinates stay stable, zero distortion).
+//
+// On LANDSCAPE screens (vw > vh): scale canvas to fit normally.
+// On PORTRAIT screens  (vw < vh): rotate canvas -90deg so the 800px axis
+//   maps to the phone height and 500px to the width — fills the screen.
+//
+// The canvas bitmap resolution is always 800×500. Only the CSS display
+// size and an optional rotation transform change.
+
+const GAME_W = 800, GAME_H = 500;
+const canvas    = document.getElementById('gameCanvas');
+const container = document.getElementById('gameContainer');
+
+function getRealViewport() {
+  if (window.visualViewport) {
+    return { w: window.visualViewport.width, h: window.visualViewport.height };
+  }
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
+function resizeGame() {
+  const { w: vw, h: vh } = getRealViewport();
+  const isPortrait = vh > vw;
+
+  let scale, dispW, dispH;
+
+  if (isPortrait) {
+    // Rotate -90°: game's 800px axis → vertical, 500px axis → horizontal
+    // Scale so the rotated game fills the portrait screen
+    scale = Math.min(vw / GAME_H, vh / GAME_W);
+    dispW = Math.floor(GAME_H * scale);   // rotated: game height becomes display width
+    dispH = Math.floor(GAME_W * scale);   // rotated: game width  becomes display height
+  } else {
+    // Normal landscape fit
+    scale = Math.min(vw / GAME_W, vh / GAME_H);
+    dispW = Math.floor(GAME_W * scale);
+    dispH = Math.floor(GAME_H * scale);
+  }
+
+  // Canvas CSS display size (bitmap stays 800×500)
+  canvas.style.width  = GAME_W + 'px';
+  canvas.style.height = GAME_H + 'px';
+
+  // Container: the visual footprint after rotation
+  container.style.width  = dispW + 'px';
+  container.style.height = dispH + 'px';
+
+  // Centre in viewport
+  const left = Math.floor((vw - dispW) / 2);
+  const top  = Math.floor((vh - dispH) / 2);
+  container.style.left = left + 'px';
+  container.style.top  = top  + 'px';
+
+  if (isPortrait) {
+    // Rotate the canvas -90deg around the centre of the container's visual area
+    // transform-origin must be in canvas px (before rotation), so we compute
+    // the pivot that places the canvas correctly inside the container after rotation.
+    const pivotX = dispW / 2;   // container centre x
+    const pivotY = dispH / 2;   // container centre y
+    canvas.style.transformOrigin = pivotX + 'px ' + pivotY + 'px';
+    canvas.style.transform = `rotate(-90deg) scale(${scale})`;
+    canvas.style.position  = 'absolute';
+    // Position the canvas so its centre aligns with the container centre
+    canvas.style.left = Math.floor(pivotX - GAME_W / 2) + 'px';
+    canvas.style.top  = Math.floor(pivotY - GAME_H / 2) + 'px';
+  } else {
+    canvas.style.transform       = `scale(${scale})`;
+    canvas.style.transformOrigin = '0 0';
+    canvas.style.position        = 'absolute';
+    canvas.style.left            = '0';
+    canvas.style.top             = '0';
+    canvas.style.width           = GAME_W + 'px';
+    canvas.style.height          = GAME_H + 'px';
+  }
+}
+
+window.addEventListener('resize', resizeGame);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', resizeGame);
+}
+window.addEventListener('orientationchange', () => {
+  setTimeout(resizeGame, 200);
+  setTimeout(resizeGame, 600);
+});
+resizeGame();
+
+// ── Portrait / Landscape enforcement ─────────────────────────────────────
+const rotateOverlay = document.getElementById('rotateOverlay');
+const gameWrapper   = document.getElementById('gameWrapper');
+
+function isPortraitMode() {
+  // Use screen.orientation API first (most reliable on mobile)
+  if (screen.orientation && screen.orientation.type) {
+    return screen.orientation.type.includes('portrait');
+  }
+  // Fallback: window.orientation (legacy iOS)
+  if (typeof window.orientation !== 'undefined') {
+    return window.orientation === 0 || window.orientation === 180;
+  }
+  // Final fallback: compare raw pixel dimensions
+  // Use screen.width/height (not window.inner* which can be wrong mid-transition)
+  return screen.height > screen.width;
+}
+
+function checkOrientation() {
+  if (isPortraitMode()) {
+    rotateOverlay.classList.add('visible');
+    // Fully hide game so nothing bleeds through
+    gameWrapper.style.visibility = 'hidden';
+    gameWrapper.style.pointerEvents = 'none';
+  } else {
+    rotateOverlay.classList.remove('visible');
+    gameWrapper.style.visibility = '';
+    gameWrapper.style.pointerEvents = '';
+  }
+}
+
+// Fire on every possible orientation/resize event for maximum reliability
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', () => {
+  // Multiple timeouts because browsers fire resize at different times after rotation
+  checkOrientation();
+  setTimeout(checkOrientation, 100);
+  setTimeout(checkOrientation, 300);
+  setTimeout(checkOrientation, 700);
+});
+if (screen.orientation) {
+  screen.orientation.addEventListener('change', () => {
+    checkOrientation();
+    setTimeout(checkOrientation, 150);
+  });
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', checkOrientation);
+}
+// Run immediately on load
+checkOrientation();
+
+// ── Notification System ───────────────────────────────────────────────────
+const notifContainer = document.getElementById('notifContainer');
+
+function showNotif(msg, type = '', duration = 3000) {
+  const el = document.createElement('div');
+  el.className = 'notif' + (type ? ' notif-' + type : '');
+  el.textContent = msg;
+  notifContainer.appendChild(el);
+
+  setTimeout(() => {
+    el.classList.add('notif-out');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }, duration);
+}
+
+// ── Dash button visibility manager ───────────────────────────────────────
+const tDashBtn   = document.getElementById('tDash');
+const isTouchDevice = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+function updateDashVisibility(lv) {
+  const unlocked = lv >= 4;
+  if (isTouchDevice()) {
+    tDashBtn.style.display   = unlocked ? 'flex' : 'none';
+  } else {
+  }
+}
+
+
+// Show touch controls if touch-capable
+function checkTouchDevice() {
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+    document.getElementById('touchControls').style.display = 'flex';
+  }
+}
+checkTouchDevice();
+
+// ── Audio ─────────────────────────────────────────────────────────────
+let audioCtx = null;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+function playTone(freq, type, dur, vol, decay) {
+  if (!audioCtx) return;
+  try {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + decay);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+
+const sfxJump  = () => playTone(280,'triangle',0.18,0.3,0.15);
+const sfxDash  = () => { playTone(600,'sawtooth',0.12,0.2,0.1); playTone(900,'sawtooth',0.12,0.15,0.08); };
+const sfxHit   = () => { playTone(100,'sawtooth',0.25,0.4,0.2); playTone(80,'square',0.2,0.3,0.25); };
+const sfxDeath = () => { playTone(150,'sawtooth',0.4,0.5,0.4); playTone(80,'sawtooth',0.6,0.4,0.6); };
+const sfxLevel = () => { playTone(440,'triangle',0.2,0.3,0.15); setTimeout(()=>playTone(660,'triangle',0.2,0.3,0.15),120); };
+
+// ── Canvas ────────────────────────────────────────────────────────────
+// canvas is already declared above in the resize section
+const gC = canvas.getContext('2d');
+// GAME_W and GAME_H are intentionally removed — use GAME_W / GAME_H directly (they update on resize)
+
+// ── Persistent data ────────────────────────────────────────────────────
+let bestScore  = parseInt(localStorage.getItem('sr_best')    || '0');
+let totalRuns  = parseInt(localStorage.getItem('sr_runs')    || '0');
+let deathLocs  = JSON.parse(localStorage.getItem('sr_deaths')|| '[]');
+let ghostSaves = JSON.parse(localStorage.getItem('sr_ghosts')|| '[]');
+
+// ── Game state ─────────────────────────────────────────────────────────
+// 'start' | 'playing' | 'transitioning' | 'dead'
+let state        = 'start';
+let level        = 1;
+let score        = 0;
+let frameCount   = 0;
+let levelTimer   = 0;
+let shakeTimer   = 0;
+let flashTimer   = 0;
+let invincTimer  = 0;
+let dashCooldown = 0;
+let dashUnlocked = false;
+let diffMod      = 1.0;
+
+// Transition vars
+let transAlpha = 0;          // 0=transparent 1=opaque
+let transPhase = '';         // 'out' | 'in' | ''
+let transNextLv = 1;
+const FADE = 0.06;           // alpha change per frame
+
+// ── Physics ───────────────────────────────────────────────────────────
+const GRAVITY  = 0.55;
+const JUMP_V   = -13;
+const MAX_SPD  = 5.5;
+const ACCEL    = 0.9;
+const FRIC     = 0.78;
+const DASH_SPD = 14;
+const DASH_DUR = 10;
+
+// ── Player ────────────────────────────────────────────────────────────
+let p = {};
+function resetPlayer() {
+  p = {
+    x:80, y:380, vx:0, vy:0, w:22, h:28,
+    onGround:false,
+    dashing:false, dashTimer:0, dashDir:1,
+    hp:3, dead:false, trail:[]
+  };
+}
+
+// ── Ghost system ───────────────────────────────────────────────────────
+const MAX_REC = 3600;
+let currentRec = [];
+let ghosts     = [];
+
+function maxGhosts(lv) {
+  if (lv <= 2) return 0;
+  if (lv <= 5) return 1;
+  if (lv <= 8) return 2;
+  return 3;
+}
+
+function initGhosts() {
+  ghosts = [];
+  const n    = maxGhosts(level);
+  const pool = ghostSaves.slice(-6);
+  for (let i = 0; i < Math.min(n, pool.length); i++) {
+    ghosts.push({
+      frames:   pool[pool.length - 1 - i],
+      frameIdx: 0,
+      x:80, y:380,
+      alpha: 0.35 + i * 0.05
+    });
+  }
+}
+
+function saveGhost() {
+  if (currentRec.length < 30) return;
+  ghostSaves.push(currentRec);
+  if (ghostSaves.length > 6) ghostSaves.shift();
+  localStorage.setItem('sr_ghosts', JSON.stringify(ghostSaves));
+}
+
+// ── Camera ────────────────────────────────────────────────────────────
+let camX = 0, targetCamX = 0;
+
+// ── Level data & particles ─────────────────────────────────────────────
+let lvData    = null;
+let particles = [];
+
+// ════════════════════════════════════════════════════════════════════════
+//  LEVEL DEFINITIONS
+// ════════════════════════════════════════════════════════════════════════
+
+function ground() {
+  return { x:0, y:440, w:99999, h:60, type:'solid' };
+}
+
+function spikes(x0, x1, gap, y) {
+  const arr = [];
+  for (let x = x0; x < x1; x += gap) arr.push({x,y,w:18,h:12,type:'spike'});
+  return arr;
+}
+
+// Helper: moving obstacle / platform object
+function mov(x, y, w, h, vx, range, isObstacle) {
+  return { x, y, w, h, type:'moving', vx, range, ox:x, oy:y, t:0,
+           _isOb: isObstacle||false };
+}
+
+const DEFS = [];
+
+DEFS[1] = () => ({
+  width:1800, goalX:1730,
+  platforms:[
+    ground(),
+    {x:300,y:360,w:120,h:16,type:'solid'},
+    {x:500,y:300,w:120,h:16,type:'safe'},
+    {x:700,y:360,w:120,h:16,type:'solid'},
+    {x:900,y:280,w:150,h:16,type:'solid'},
+    {x:1100,y:360,w:120,h:16,type:'safe'},
+    {x:1300,y:310,w:120,h:16,type:'solid'},
+    {x:1500,y:370,w:140,h:16,type:'solid'},
+    {x:1680,y:340,w:100,h:16,type:'safe'},
+  ],
+  obstacles:[]
+});
+
+DEFS[2] = () => ({
+  width:2000, goalX:1930,
+  platforms:[
+    ground(),
+    {x:280,y:360,w:100,h:16,type:'solid'},
+    {x:480,y:300,w:120,h:16,type:'solid'},
+    {x:680,y:360,w:100,h:16,type:'solid'},
+    {x:880,y:290,w:120,h:16,type:'safe'},
+    {x:1080,y:350,w:100,h:16,type:'solid'},
+    {x:1280,y:300,w:130,h:16,type:'solid'},
+    {x:1480,y:360,w:110,h:16,type:'solid'},
+    {x:1680,y:300,w:120,h:16,type:'safe'},
+    {x:1860,y:360,w:120,h:16,type:'solid'},
+  ],
+  obstacles:[
+    {x:420,y:428,w:18,h:12,type:'spike'},
+    {x:620,y:428,w:18,h:12,type:'spike'},
+    {x:1000,y:428,w:18,h:12,type:'spike'},
+    {x:1200,y:428,w:18,h:12,type:'spike'},
+    {x:1400,y:428,w:18,h:12,type:'spike'},
+    {x:1600,y:428,w:18,h:12,type:'spike'},
+  ]
+});
+
+DEFS[3] = () => ({
+  width:2200, goalX:2130,
+  platforms:[
+    ground(),
+    {x:250,y:350,w:100,h:16,type:'solid'},
+    {x:450,y:290,w:100,h:16,type:'solid'},
+    {x:650,y:350,w:120,h:16,type:'safe'},
+    {x:850,y:280,w:100,h:16,type:'solid'},
+    {x:1050,y:340,w:100,h:16,type:'solid'},
+    {x:1250,y:290,w:120,h:16,type:'safe'},
+    {x:1450,y:350,w:100,h:16,type:'solid'},
+    {x:1650,y:280,w:130,h:16,type:'solid'},
+    {x:1850,y:340,w:110,h:16,type:'solid'},
+    {x:2050,y:360,w:120,h:16,type:'safe'},
+  ],
+  obstacles:[
+    {x:380,y:428,w:18,h:12,type:'spike'},
+    {x:560,y:428,w:18,h:12,type:'spike'},
+    {x:760,y:428,w:18,h:12,type:'spike'},
+    {x:960,y:428,w:18,h:12,type:'spike'},
+    {x:1160,y:428,w:18,h:12,type:'spike'},
+    {x:1360,y:428,w:18,h:12,type:'spike'},
+    {x:1560,y:428,w:18,h:12,type:'spike'},
+    {x:1200,y:400,w:28,h:28,type:'moving',vx:2,range:120,ox:1200,t:0},
+  ]
+});
+
+DEFS[4] = () => ({
+  width:2400, goalX:2330,
+  platforms:[
+    ground(),
+    {x:220,y:350,w:100,h:16,type:'solid'},
+    {x:420,y:280,w:90,h:16,type:'solid'},
+    {x:600,y:340,w:90,h:16,type:'solid'},
+    {x:780,y:270,w:100,h:16,type:'safe'},
+    {x:980,y:330,w:90,h:16,type:'moving',vx:1.5,range:80,ox:980,oy:330,t:0},
+    {x:1180,y:280,w:100,h:16,type:'solid'},
+    {x:1380,y:340,w:90,h:16,type:'solid'},
+    {x:1580,y:260,w:100,h:16,type:'moving',vx:2,range:100,ox:1580,oy:260,t:0},
+    {x:1780,y:310,w:100,h:16,type:'solid'},
+    {x:1980,y:260,w:120,h:16,type:'safe'},
+    {x:2180,y:320,w:130,h:16,type:'solid'},
+  ],
+  obstacles:[
+    {x:340,y:428,w:18,h:12,type:'spike'},
+    {x:520,y:428,w:18,h:12,type:'spike'},
+    {x:700,y:428,w:18,h:12,type:'spike'},
+    {x:900,y:428,w:18,h:12,type:'spike'},
+    {x:1100,y:428,w:18,h:12,type:'spike'},
+    {x:1300,y:428,w:18,h:12,type:'spike'},
+    {x:1500,y:428,w:18,h:12,type:'spike'},
+    {x:1700,y:428,w:18,h:12,type:'spike'},
+    {x:1900,y:428,w:18,h:12,type:'spike'},
+    {x:800,y:398,w:28,h:28,type:'moving',vx:1.8,range:100,ox:800,t:0},
+  ]
+});
+
+DEFS[5] = () => ({
+  width:2600, goalX:2530,
+  platforms:[
+    ground(),
+    {x:200,y:340,w:90,h:16,type:'solid'},
+    {x:380,y:270,w:80,h:16,type:'solid'},
+    {x:540,y:330,w:90,h:16,type:'safe'},
+    {x:720,y:260,w:80,h:16,type:'solid'},
+    {x:900,y:320,w:80,h:16,type:'moving',vx:2,range:90,ox:900,oy:320,t:0},
+    {x:1100,y:260,w:90,h:16,type:'solid'},
+    {x:1300,y:320,w:80,h:16,type:'solid'},
+    {x:1480,y:260,w:90,h:16,type:'moving',vx:2.2,range:100,ox:1480,oy:260,t:0},
+    {x:1680,y:310,w:80,h:16,type:'solid'},
+    {x:1860,y:250,w:90,h:16,type:'safe'},
+    {x:2060,y:300,w:90,h:16,type:'solid'},
+    {x:2250,y:240,w:100,h:16,type:'solid'},
+    {x:2440,y:295,w:110,h:16,type:'safe'},
+  ],
+  obstacles:[
+    ...spikes(300,2400,160,428),
+    {x:600,y:395,w:28,h:28,type:'moving',vx:2,range:120,ox:600,t:0},
+    {x:1200,y:395,w:28,h:28,type:'moving',vx:2.5,range:110,ox:1200,t:0},
+    {x:1900,y:395,w:28,h:28,type:'moving',vx:2.2,range:100,ox:1900,t:0},
+  ]
+});
+
+// Levels 6–10: procedural
+for (let lv = 6; lv <= 10; lv++) {
+  DEFS[lv] = ((l) => () => procLevel(l))(lv);
+}
+
+function procLevel(lv) {
+  const d     = Math.min((lv - 5) * diffMod, 4);
+  const width = 2400 + lv * 200;
+  const platforms = [ground()];
+  const obstacles = [];
+
+  let px = 200, py = 370;
+  while (px < width - 300) {
+    const pw   = 75 + Math.random() * 55;
+    const kind = Math.random() < 0.18 ? 'safe' : (Math.random() < 0.28 ? 'moving' : 'solid');
+    platforms.push({
+      x:px, y:py, w:pw, h:16, type:kind,
+      vx:1 + Math.random() * d * 0.55,
+      range:55 + Math.random() * 65,
+      ox:px, oy:py, t:0
+    });
+    px += pw + 80 + Math.random() * 70;
+    py  = 210 + Math.random() * 200;
+  }
+
+  const gap = Math.max(110, 195 - lv * 7);
+  for (let x = 300; x < width - 200; x += gap + Math.random() * 50) {
+    const near = deathLocs.some(dx => Math.abs(dx - x) < 75);
+    if (near && Math.random() < 0.45) continue;
+    obstacles.push({x, y:428, w:18, h:12, type:'spike'});
+  }
+
+  const nm = 2 + Math.floor(d);
+  for (let i = 0; i < nm; i++) {
+    const mx = 400 + Math.floor(Math.random() * (width - 600));
+    obstacles.push({
+      x:mx, y:390+(Math.random()*18|0), w:30, h:30,
+      type:'moving', vx:1.4+Math.random()*d*0.45,
+      range:80+Math.random()*80, ox:mx, t:0
+    });
+  }
+
+  return { width, goalX:width-120, platforms, obstacles };
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  LEVEL INIT — single authoritative function, resets all state
+// ════════════════════════════════════════════════════════════════════════
+function startLevel(lv) {
+  // Scalars
+  const wasLocked = !dashUnlocked;
+  level        = lv;
+  dashUnlocked = lv >= 4;
+  levelTimer   = 0;
+  frameCount   = 0;
+  invincTimer  = 0;
+  dashCooldown = 0;
+  shakeTimer   = 0;
+  flashTimer   = 0;
+
+  // Build fresh level data (DEFS[] always returns a new object)
+  const defFn = DEFS[Math.min(lv, 10)] || DEFS[10];
+  lvData = defFn();
+
+  // Make sure every moving entity has a clean timer
+  lvData.platforms.forEach(pl => {
+    if (pl.type === 'moving') { pl.t = 0; if (pl.ox===undefined) pl.ox=pl.x; if (pl.oy===undefined) pl.oy=pl.y; }
+  });
+  lvData.obstacles.forEach(ob => {
+    if (ob.type === 'moving') { ob.t = 0; if (ob.ox===undefined) ob.ox=ob.x; }
+  });
+
+  // Clear all per-run arrays
+  currentRec = [];
+  particles  = [];
+
+  // Player — clean spawn
+  resetPlayer();
+
+  // Camera — hard reset to world origin
+  camX       = 0;
+  targetCamX = 0;
+
+  // Ghosts
+  initGhosts();
+
+  // Dash visibility + unlock notification
+  updateDashVisibility(lv);
+  if (dashUnlocked && wasLocked) {
+    setTimeout(() => showNotif('⚡ Dash Unlocked! Boost forward quickly – Press Shift to use Dash', 'unlock', 4000), 800);
+  }
+
+  updateHUD();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  INPUT
+// ════════════════════════════════════════════════════════════════════════
+const keys  = {};
+const touch = { left:false, right:false, jump:false, dash:false };
+let jumpPressed = false, dashPressed = false;
+
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space','ArrowUp','KeyW'].includes(e.code) && !jumpPressed) jumpPressed = true;
+  if (['ShiftLeft','ShiftRight'].includes(e.code)) dashPressed = true;
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight'].includes(e.code))
+    e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+function bindBtn(id, prop) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const on  = e => { e.preventDefault(); touch[prop]=true;  el.classList.add('pressed'); };
+  const off = e => { e.preventDefault(); touch[prop]=false; el.classList.remove('pressed'); };
+  el.addEventListener('touchstart',  on,  {passive:false});
+  el.addEventListener('touchend',    off, {passive:false});
+  el.addEventListener('touchcancel', off, {passive:false});
+  // Mouse fallback for testing on desktop
+  el.addEventListener('mousedown', on);
+  el.addEventListener('mouseup',   off);
+}
+bindBtn('tLeft','left'); bindBtn('tRight','right');
+bindBtn('tJump','jump'); bindBtn('tDash','dash');
+
+// Tap on canvas = jump (for mobile)
+canvas.addEventListener('touchstart', e => {
+  if (e.target === canvas) { e.preventDefault(); jumpPressed = true; }
+}, {passive:false});
+
+const iL = () => keys['KeyA']||keys['ArrowLeft'] ||touch.left;
+const iR = () => keys['KeyD']||keys['ArrowRight']||touch.right;
+const iJ = () => keys['Space']||keys['ArrowUp']||keys['KeyW']||touch.jump;
+
+// ════════════════════════════════════════════════════════════════════════
+//  COLLISION
+// ════════════════════════════════════════════════════════════════════════
+function overlap(a,b) {
+  return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y;
+}
+
+function resolvePlatforms() {
+  p.onGround = false;
+  for (const pl of lvData.platforms) {
+    if (!overlap(p,pl)) continue;
+    const ox = Math.min(p.x+p.w,pl.x+pl.w)-Math.max(p.x,pl.x);
+    const oy = Math.min(p.y+p.h,pl.y+pl.h)-Math.max(p.y,pl.y);
+    if (oy < ox) {
+      if (p.y+p.h*0.5 < pl.y+pl.h*0.5) { p.y=pl.y-p.h; p.vy=0; p.onGround=true; }
+      else { p.y=pl.y+pl.h; p.vy=Math.max(p.vy,0); }
+    } else {
+      if (p.x+p.w*0.5 < pl.x+pl.w*0.5) p.x=pl.x-p.w; else p.x=pl.x+pl.w;
+      p.vx=0;
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  PARTICLES
+// ════════════════════════════════════════════════════════════════════════
+function burst(x,y,color,n,spd) {
+  for (let i=0;i<n;i++) {
+    const a=Math.random()*Math.PI*2, sp=spd*(0.4+Math.random()*0.6);
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-2,
+      life:1, decay:0.03+Math.random()*0.04, r:2+Math.random()*3, color});
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  UPDATE
+// ════════════════════════════════════════════════════════════════════════
+function update() {
+  if (state === 'transitioning') { updateTransition(); return; }
+  if (state !== 'playing') return;
+
+  frameCount++;
+  levelTimer++;
+  score = Math.floor(levelTimer/60) + (level-1)*60;
+  if (score > bestScore) { bestScore=score; localStorage.setItem('sr_best',bestScore); }
+
+  // Animate movers
+  for (const pl of lvData.platforms) {
+    if (pl.type!=='moving') continue;
+    pl.t++;
+    pl.x = pl.ox + Math.sin(pl.t * pl.vx * 0.04) * pl.range;
+  }
+  for (const ob of lvData.obstacles) {
+    if (ob.type!=='moving') continue;
+    ob.t++;
+    ob.x = ob.ox + Math.sin(ob.t * ob.vx * 0.04) * ob.range;
+  }
+
+  if (!p.dead) {
+    if (invincTimer  > 0) invincTimer--;
+    if (dashCooldown > 0) dashCooldown--;
+
+    if (p.dashing) {
+      p.dashTimer--;
+      p.vx = p.dashDir * DASH_SPD;
+      p.vy *= 0.88;
+      if (p.dashTimer <= 0) p.dashing = false;
+    } else {
+      if (iL()) { p.vx -= ACCEL; p.dashDir = -1; }
+      if (iR()) { p.vx += ACCEL; p.dashDir =  1; }
+      p.vx *= FRIC;
+      p.vx  = Math.max(-MAX_SPD, Math.min(MAX_SPD, p.vx));
+
+      if ((iJ() || jumpPressed) && p.onGround) {
+        p.vy=JUMP_V; p.onGround=false; sfxJump();
+      }
+      if ((dashPressed || touch.dash) && dashUnlocked && dashCooldown<=0) {
+        p.dashing=true; p.dashTimer=DASH_DUR;
+        p.vy=Math.min(p.vy,-2); dashCooldown=40; sfxDash();
+      }
+
+      p.vy += GRAVITY;
+      if (p.vy>18) p.vy=18;
+    }
+
+    jumpPressed=false; dashPressed=false;
+
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.x < 0) { p.x=0; p.vx=0; }
+
+    resolvePlatforms();
+
+    // ── GOAL CHECK (world-space comparison — no camX subtraction) ──
+    if (lvData.goalX && p.x >= lvData.goalX) {
+      beginTransition();
+      return;
+    }
+
+    // Kill zone
+    if (p.y > GAME_H + 80) { playerDie(p.x, GAME_H); return; }
+
+    // Obstacle hits
+    if (invincTimer <= 0) {
+      for (const ob of lvData.obstacles) {
+        if (overlap(p,ob)) { playerHit(); break; }
+      }
+    }
+
+    // Trail
+    p.trail.push({x:p.x+p.w/2, y:p.y+p.h/2});
+    if (p.trail.length>8) p.trail.shift();
+
+    // Ghost recording
+    if (currentRec.length < MAX_REC) currentRec.push({x:p.x, y:p.y});
+  }
+
+  // Advance ghosts
+  for (const g of ghosts) {
+    g.frameIdx++;
+    if (g.frameIdx < g.frames.length) {
+      g.x = g.frames[g.frameIdx].x;
+      g.y = g.frames[g.frameIdx].y;
+    }
+    if (invincTimer<=0 && !p.dead) {
+      if (overlap({x:g.x-2,y:g.y-2,w:26,h:32},{x:p.x,y:p.y,w:p.w,h:p.h})) playerHit();
+    }
+  }
+
+  // Particles
+  for (let i=particles.length-1;i>=0;i--) {
+    const pt=particles[i];
+    pt.x+=pt.vx; pt.y+=pt.vy; pt.vy+=0.15;
+    pt.life-=pt.decay;
+    if (pt.life<=0) particles.splice(i,1);
+  }
+
+  // Camera
+  targetCamX = Math.max(0, p.x - GAME_W*0.35);
+  camX += (targetCamX - camX) * 0.1;
+  if (shakeTimer>0) shakeTimer--;
+
+  updateHUD();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  LEVEL TRANSITION  (fade-out → swap level → fade-in)
+// ════════════════════════════════════════════════════════════════════════
+const overlayEl = document.getElementById('levelOverlay');
+const bannerEl  = document.getElementById('levelBanner');
+
+function beginTransition() {
+  if (state==='transitioning') return;
+  sfxLevel();
+  burst(p.x+p.w/2, p.y+p.h/2, '#00d4ff', 18, 6);
+  saveGhost();
+  transNextLv = level + 1;
+  if (transNextLv > 10) diffMod = Math.min(diffMod+0.15, 3.0);
+  transAlpha = 0;
+  transPhase = 'out';
+  state = 'transitioning';
+}
+
+function updateTransition() {
+  if (transPhase === 'out') {
+    transAlpha = Math.min(1, transAlpha + FADE);
+    overlayEl.style.opacity = transAlpha;
+    if (transAlpha >= 1) {
+      // Level fully hidden — swap all state safely here
+      startLevel(transNextLv);
+      showBanner(transNextLv);
+      transPhase = 'in';
+    }
+  } else if (transPhase === 'in') {
+    transAlpha = Math.max(0, transAlpha - FADE * 0.65);
+    overlayEl.style.opacity = transAlpha;
+    if (transAlpha <= 0) {
+      overlayEl.style.opacity = 0;
+      transPhase = '';
+      state = 'playing';
+    }
+  }
+}
+
+function showBanner(lv) {
+  bannerEl.textContent = lv > 10 ? 'ENDLESS MODE' : `LEVEL  ${lv}`;
+  bannerEl.style.opacity = '1';
+  setTimeout(() => { bannerEl.style.opacity = '0'; }, 1500);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  HIT / DEATH
+// ════════════════════════════════════════════════════════════════════════
+function playerHit() {
+  if (invincTimer>0||p.dead) return;
+  p.hp--;
+  invincTimer=80; shakeTimer=12; flashTimer=10;
+  sfxHit();
+  burst(p.x+p.w/2, p.y+p.h/2, '#ff4466', 10, 5);
+  if (p.hp<=0) playerDie(p.x, p.y);
+  updateHUD();
+}
+
+function playerDie(wx, wy) {
+  if (p.dead) return;
+  p.dead=true; sfxDeath(); shakeTimer=20;
+  burst(p.x+p.w/2, p.y+p.h/2, '#ff4466', 22, 7);
+
+  deathLocs.push(wx);
+  if (deathLocs.length>30) deathLocs.shift();
+  localStorage.setItem('sr_deaths', JSON.stringify(deathLocs));
+
+  saveGhost();
+  if (score>bestScore) { bestScore=score; localStorage.setItem('sr_best',bestScore); }
+  totalRuns++;
+  localStorage.setItem('sr_runs', totalRuns);
+
+  setTimeout(showDead, 950);
+}
+
+function showDead() {
+  state='dead';
+  document.getElementById('gameOverScreen').classList.remove('hidden');
+  document.getElementById('goLevel').textContent = level;
+  document.getElementById('goScore').textContent = score;
+  document.getElementById('goBest').textContent  = bestScore;
+  const msgs=[
+    'Your ghost will haunt the next run.',
+    'The shadows remember every mistake.',
+    'Try again — you know the pattern now.',
+    'Failure is data. Adapt.',
+    'Your echo will face you next time.',
+    'The run is over. The ghost persists.',
+  ];
+  document.getElementById('goMsg').textContent = msgs[Math.floor(Math.random()*msgs.length)];
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  HUD
+// ════════════════════════════════════════════════════════════════════════
+function updateHUD() {
+  document.getElementById('hudLevel').textContent = level;
+  document.getElementById('hudScore').textContent = score;
+  document.getElementById('hudBest').textContent  = bestScore;
+  const hp   = Math.max(0, p.hp||0);
+  const hpEl = document.getElementById('hudHP');
+  hpEl.textContent = '■'.repeat(hp)+'□'.repeat(Math.max(0,3-hp));
+  hpEl.className   = 'hud-val'+(hp<=1?' danger':'');
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════════════════════════════════════
+function drawBg() {
+  gC.fillStyle='#08080f';
+  gC.fillRect(0,0,GAME_W,GAME_H);
+  // Stars (parallax)
+  gC.fillStyle='rgba(110,110,190,0.5)';
+  for (let i=0;i<44;i++) {
+    const sx=((i*73+camX*0.12)%GAME_W+GAME_W)%GAME_W;
+    const sy=(i*37)%(GAME_H*0.72);
+    const sz=0.5+(i%3)*0.5;
+    gC.fillRect(sx,sy,sz,sz);
+  }
+  // Silhouette mountains
+  gC.fillStyle='rgba(18,18,46,0.8)';
+  for (let i=0;i<8;i++) {
+    const mx=((i*220-camX*0.22)%(GAME_W+200)+GAME_W+200)%(GAME_W+200)-100;
+    const mh=60+(i%3)*40;
+    gC.beginPath(); gC.moveTo(mx,GAME_H-60); gC.lineTo(mx+80,GAME_H-60-mh); gC.lineTo(mx+160,GAME_H-60); gC.closePath(); gC.fill();
+  }
+  gC.fillStyle='rgba(0,40,80,0.07)';
+  gC.fillRect(0,380,GAME_W,120);
+}
+
+function drawGoal(gx) {
+  const sx=gx-camX;
+  if (sx<-60||sx>GAME_W+60) return;
+  gC.save();
+  const hue=(Date.now()/8)%360;
+  gC.strokeStyle=`hsl(${hue},80%,65%)`;
+  gC.lineWidth=2.5;
+  gC.shadowColor=gC.strokeStyle; gC.shadowBlur=14;
+  for (let y=40;y<GAME_H-40;y+=28) {
+    gC.beginPath(); gC.moveTo(sx,y); gC.lineTo(sx,y+18); gC.stroke();
+  }
+  gC.font='10px Courier New';
+  gC.fillStyle=gC.strokeStyle;
+  gC.fillText('GOAL',sx-14,30);
+  gC.restore();
+}
+
+function drawPlatform(pl) {
+  const sx=pl.x-camX;
+  if (sx+pl.w<-2||sx>GAME_W+2) return;
+  const pal={
+    solid: {body:'#1e1e3a',top:'#4848a0'},
+    safe:  {body:'#0c2e18',top:'#22cc60'},
+    moving:{body:'#1e1a08',top:'#ddaa22'},
+  };
+  const c=pal[pl.type]||pal.solid;
+  gC.fillStyle=c.body; gC.fillRect(sx,pl.y,pl.w,pl.h);
+  gC.fillStyle=c.top;  gC.fillRect(sx,pl.y,pl.w,3);
+  if (pl.type==='safe'&&pl.h<30) {
+    gC.fillStyle='rgba(28,200,80,0.05)';
+    gC.fillRect(sx,pl.y-70,pl.w,70);
+  }
+}
+
+function drawSpike(ob) {
+  const sx=ob.x-camX;
+  if (sx+ob.w<0||sx>GAME_W) return;
+  const mid=sx+ob.w/2;
+  gC.fillStyle='#c02040';
+  gC.beginPath(); gC.moveTo(mid,ob.y); gC.lineTo(sx+ob.w,ob.y+ob.h); gC.lineTo(sx,ob.y+ob.h); gC.closePath(); gC.fill();
+  gC.fillStyle='rgba(255,60,90,0.5)';
+  gC.beginPath(); gC.moveTo(mid,ob.y-1); gC.lineTo(mid+3,ob.y+5); gC.lineTo(mid,ob.y+4); gC.closePath(); gC.fill();
+}
+
+function drawMovingBlock(ob) {
+  const sx=ob.x-camX;
+  if (sx+ob.w<0||sx>GAME_W) return;
+  gC.fillStyle='#9a2000'; gC.fillRect(sx,ob.y,ob.w,ob.h);
+  gC.fillStyle='#ff4422'; gC.fillRect(sx+2,ob.y+2,ob.w-4,4);
+  gC.fillRect(sx+2,ob.y+ob.h-6,ob.w-4,4);
+}
+
+function drawPlayer() {
+  if (p.dead) return;
+  const sx=p.x-camX;
+  // Trail
+  for (let i=0;i<p.trail.length;i++) {
+    const a=(i/p.trail.length)*0.22, r=(i/p.trail.length)*5;
+    gC.globalAlpha=a; gC.fillStyle='#00d4ff';
+    gC.fillRect(p.trail[i].x-camX-r/2, p.trail[i].y-r/2, r, r);
+  }
+  gC.globalAlpha=1;
+  if (invincTimer>0&&Math.floor(invincTimer/6)%2===0) return;
+  gC.shadowColor='#00d4ff'; gC.shadowBlur=12;
+  if (p.dashing) {
+    gC.globalAlpha=0.28; gC.fillStyle='#00d4ff';
+    gC.fillRect(sx-p.dashDir*22,p.y,p.w,p.h);
+    gC.globalAlpha=1;
+  }
+  gC.fillStyle='#00d4ff'; gC.fillRect(sx,p.y,p.w,p.h);
+  const ex=sx+(p.dashDir>0?13:4);
+  gC.fillStyle='#061018';
+  gC.fillRect(ex,p.y+6,5,5);
+  gC.fillRect(ex,p.y+15,5,2);
+  gC.shadowBlur=0;
+}
+
+function drawGhost(g) {
+  if (g.frameIdx>=g.frames.length) return;
+  const sx=g.x-camX;
+  if (sx<-50||sx>GAME_W+50) return;
+  gC.save();
+  gC.globalAlpha=g.alpha;
+  gC.shadowColor='#cc66ff'; gC.shadowBlur=14;
+  gC.fillStyle='#cc66ff'; gC.fillRect(sx,g.y,22,28);
+  gC.globalAlpha=g.alpha*0.28;
+  gC.fillStyle='#ff80ff'; gC.fillRect(sx-3,g.y-3,28,34);
+  gC.restore();
+}
+
+function drawParticles() {
+  for (const pt of particles) {
+    gC.globalAlpha=pt.life; gC.fillStyle=pt.color;
+    gC.fillRect(pt.x-camX-pt.r/2, pt.y-pt.r/2, pt.r, pt.r);
+  }
+  gC.globalAlpha=1;
+}
+
+function drawFlash() {
+  if (flashTimer>0) {
+    flashTimer--;
+    gC.fillStyle=`rgba(255,40,50,${(flashTimer/10)*0.35})`;
+    gC.fillRect(0,0,GAME_W,GAME_H);
+  }
+}
+
+function drawDashBar() {
+  if (!dashUnlocked) return;
+  const bx=GAME_W-64, by=28, bw=50, bh=3;
+  gC.fillStyle='rgba(0,50,80,0.6)';
+  gC.fillRect(bx,by,bw,bh);
+  const fill = dashCooldown<=0 ? bw : bw*(1-dashCooldown/40);
+  gC.fillStyle = dashCooldown<=0 ? '#00d4ff' : '#336688';
+  gC.fillRect(bx,by,fill,bh);
+  gC.fillStyle = dashCooldown<=0 ? 'rgba(0,212,255,0.7)' : 'rgba(80,100,140,0.5)';
+  gC.font='8px Courier New';
+  gC.fillText('DASH',bx,by-3);
+}
+
+function drawProgressBar() {
+  if (!lvData||!lvData.goalX) return;
+  const prog=Math.min(1, p.x/lvData.goalX);
+  gC.fillStyle='rgba(0,40,60,0.6)'; gC.fillRect(0,GAME_H-3,GAME_W,3);
+  gC.fillStyle='#00d4ff';           gC.fillRect(0,GAME_H-3,GAME_W*prog,3);
+}
+
+function render() {
+  gC.clearRect(0,0,GAME_W,GAME_H);
+
+  if (state==='start'||state==='dead') {
+    gC.fillStyle='#08080f'; gC.fillRect(0,0,GAME_W,GAME_H);
+    return;
+  }
+
+  let shX=0, shY=0;
+  if (shakeTimer>0) {
+    shX=(Math.random()-0.5)*7*(shakeTimer/20);
+    shY=(Math.random()-0.5)*4*(shakeTimer/20);
+  }
+  gC.save();
+  gC.translate(shX,shY);
+
+  drawBg();
+  for (const pl of lvData.platforms) drawPlatform(pl);
+  if (lvData.goalX) drawGoal(lvData.goalX);
+  for (const ob of lvData.obstacles) {
+    if      (ob.type==='spike')  drawSpike(ob);
+    else if (ob.type==='moving') drawMovingBlock(ob);
+  }
+  for (const g of ghosts) drawGhost(g);
+  drawPlayer();
+  drawParticles();
+  drawFlash();
+  drawDashBar();
+  drawProgressBar();
+
+  gC.restore();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  GAME LOOP
+// ════════════════════════════════════════════════════════════════════════
+function loop() {
+  update();
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  UI WIRING
+// ════════════════════════════════════════════════════════════════════════
+function refreshStart() {
+  document.getElementById('startBest').textContent = bestScore;
+  document.getElementById('startRuns').textContent = totalRuns;
+}
+
+function launchGame() {
+  initAudio();
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('gameOverScreen').classList.add('hidden');
+  overlayEl.style.opacity = 0;
+  transPhase = '';
+  transAlpha = 0;
+  diffMod = 1.0 + Math.min(totalRuns*0.04, 1.0);
+  state   = 'playing';
+  startLevel(1);
+  showBanner(1);
+}
+
+document.getElementById('startBtn').addEventListener('click', () => { requestFullscreen(); refreshStart(); launchGame(); });
+document.getElementById('restartBtn').addEventListener('click', () => {
+  document.getElementById('gameOverScreen').classList.add('hidden');
+  overlayEl.style.opacity = 0;
+  transPhase = ''; transAlpha = 0;
+  diffMod = 1.0 + Math.min(totalRuns*0.04, 1.0);
+  state   = 'playing';
+  startLevel(1);
+  showBanner(1);
+  refreshStart();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code==='Enter'||e.code==='NumpadEnter') {
+    if      (state==='start') { refreshStart(); launchGame(); }
+    else if (state==='dead')  document.getElementById('restartBtn').click();
+  }
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────
+refreshStart();
+loop();
+
+// ════════════════════════════════════════════════════════════════════════
+//  PWA — SERVICE WORKER REGISTRATION
+//  Required for the "Add to Home Screen" install prompt on Android Chrome.
+//  Without a registered SW the browser won't consider the page installable.
+// ════════════════════════════════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg  => console.log('[PWA] SW registered:', reg.scope))
+      .catch(err => console.warn('[PWA] SW registration failed:', err));
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  FULLSCREEN API
+//  When the user taps the canvas / start button we request true OS-level
+//  fullscreen.  This works on Android Chrome in the browser tab (before
+//  installing as PWA).  iOS Safari does NOT support the Fullscreen API —
+//  for iOS the only real fullscreen is the PWA home-screen install path.
+// ════════════════════════════════════════════════════════════════════════
+function requestFullscreen() {
+  const el = document.documentElement;
+  const req = el.requestFullscreen
+           || el.webkitRequestFullscreen
+           || el.mozRequestFullScreen
+           || el.msRequestFullscreen;
+  if (req) {
+    req.call(el, { navigationUI: 'hide' }).catch(() => {});
+  }
+  // Lock orientation to landscape so the game always renders correctly
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('landscape').catch(() => {});
+  }
+}
+
+function isPWA() {
+  return window.matchMedia('(display-mode: fullscreen)').matches
+      || window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
+}
+
+// ── Install prompt (Android "Add to Home Screen") ────────────────────────
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallBanner();
+});
+
+function showInstallBanner() {
+  if (document.getElementById('installBanner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'installBanner';
+  banner.innerHTML = `
+    <span>📲 Install EVOLVE for true fullscreen & offline play</span>
+    <div style="display:flex;gap:8px;margin-top:6px;justify-content:center">
+      <button id="installBtn">Install App</button>
+      <button id="dismissBtn">Not now</button>
+    </div>`;
+  Object.assign(banner.style, {
+    position:'fixed', top:'10px', left:'50%', transform:'translateX(-50%)',
+    background:'rgba(0,20,40,0.95)', color:'#00d4ff', padding:'10px 16px',
+    borderRadius:'10px', fontSize:'12px', textAlign:'center', zIndex:'9999',
+    border:'1px solid rgba(0,212,255,0.5)', maxWidth:'92vw',
+    fontFamily:"'Courier New',monospace", boxShadow:'0 4px 24px rgba(0,212,255,0.15)',
+    backdropFilter:'blur(10px)',
+  });
+  document.body.appendChild(banner);
+  banner.querySelectorAll('button').forEach(btn => {
+    Object.assign(btn.style, {
+      background:'transparent', border:'1px solid #00d4ff', color:'#00d4ff',
+      fontFamily:"'Courier New',monospace", fontSize:'12px', padding:'5px 14px',
+      borderRadius:'6px', cursor:'pointer',
+    });
+  });
+  document.getElementById('installBtn').onclick = async () => {
+    banner.remove();
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      console.log('[PWA] Install outcome:', outcome);
+      deferredInstallPrompt = null;
+    }
+  };
+  document.getElementById('dismissBtn').onclick = () => banner.remove();
+}
+
+window.addEventListener('appinstalled', () => {
+  console.log('[PWA] App installed successfully');
+  deferredInstallPrompt = null;
+});
+
+</script>
+</body>
+</html>
